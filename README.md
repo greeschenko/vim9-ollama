@@ -30,7 +30,7 @@ Plug 'greeschenko/vim9-ollama'
     :OllamaAsk Tell me a joke
 ```
 
-    return a random joke or another ansver for your question in the cursor position line
+return a random joke or another ansver for your question in the cursor position line
 
 2. select text or code and type in vim console
 
@@ -38,7 +38,7 @@ Plug 'greeschenko/vim9-ollama'
     :OllamaChange Modify the following text to improve grammar and spelling, just output the final text without additional quotes around it
 ```
 
-    this command replace text with correct text with improved gramma and spelling
+this command replace text with correct text with improved gramma and spelling
 
 3. select code and type in vim console
 
@@ -46,7 +46,7 @@ Plug 'greeschenko/vim9-ollama'
     :OllamaChangeCode Add extra logging in this function
 ```
 
-    this command replace you code with updated
+this command replace you code with updated
 
 4. prepere not completite code with <FILL> in midle  
     
@@ -61,7 +61,7 @@ select whis code and type
     :OllamaFill
 ```
 
-    this command replace you code with complete function
+this command replace you code with complete function
 
 5. select text or code and type in vim console
 
@@ -69,7 +69,7 @@ select whis code and type
     :OllamaRead what I can change in this
 ```
 
-    this command write after selection text a LLM comments about this
+this command write after selection text a LLM comments about this
 
 ## Troubleshooting
 
