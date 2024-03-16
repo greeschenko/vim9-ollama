@@ -13,6 +13,7 @@ def StartServer()
     echom "Starting server..."
 enddef
 
+
 def StopServer()
     const cmd = [ "pkill", "-SIGTERM", "ollama" ]
     const opts = {
@@ -21,6 +22,7 @@ def StopServer()
     const job = job_start(cmd, opts)
     echom "Stoping server..."
 enddef
+
 
 def OnSrvError(ch: channel, msg: string)
     echom msg
@@ -35,19 +37,22 @@ def OnResponse(ch: channel, msg: string)
 enddef
 
 def OllamaAsk(promt: string)
-    const api = "http://localhost:11434/api/generate"
-    const data = {
-      "model": "codellama:latest",
-      "prompt": promt,
-      "stream": true,
-    }
-    const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
-    const opts = {
-        "out_cb": OnResponse,
-        "err_cb": OnError
-    }
-    const job = job_start(cmd, opts)
-    echom "Searching..."
+  const api = "http://localhost:11434/api/generate"
+  const data = {
+    "model": "codellama:latest",
+    "prompt": promt,
+    "stream": true,
+  }
+  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
+  const opts = {
+    "out_cb": OnResponse,
+    "err_cb": OnError
+  }
+  const job = job_start(cmd, opts)
+  silent execute "vertical belowright :60split /tmp/ollamaanswer.md"
+  silent execute "set wrap linebreak"
+  execute "normal ggVGd"
+  echom "Searching..."
 enddef
 
 def OllamaChange(prompt: string)
@@ -91,7 +96,6 @@ def OllamaChangeCode(prompt: string)
   const api = "http://localhost:11434/api/generate"
   const data = {
     "model": "codellama:latest",
-    #"model": "deepseek-coder:latest",
     "prompt": '\\\' ..  &filetype
     .. res
     .. '\\\'
@@ -100,6 +104,12 @@ def OllamaChangeCode(prompt: string)
     .. '[/INST] Sure! Here is the rewritten code you requested:'
     .. '\\\' ..  &filetype,
     "stream": true,
+    "options": {
+      "seed": 123,
+      "temperature": 0.4,
+      "num_thread": 8,
+      #"mirostat_eta": 0.5,
+    },
   }
 
   const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
@@ -127,6 +137,12 @@ def OllamaFill()
     "model": "codellama:latest",
     "prompt": res,
     "stream": true,
+    "options": {
+      "seed": 123,
+      "temperature": 0.4,
+      "num_thread": 8,
+      #"mirostat_eta": 0.5,
+    },
   }
 
   const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
@@ -152,7 +168,6 @@ def OllamaRead(prompt: string)
   const api = "http://localhost:11434/api/generate"
   const data = {
     "model": "codellama:latest",
-    #"model": "deepseek-coder:latest",
     "prompt": prompt .. res,
     "stream": true,
   }
@@ -162,6 +177,9 @@ def OllamaRead(prompt: string)
     "err_cb": OnError
   }
   const job = job_start(cmd, opts)
+  silent execute "vertical belowright :60split /tmp/ollamaanswer.md"
+  silent execute "set wrap linebreak"
+  execute "normal ggVGd"
   echom "Searching..."
 enddef
 
@@ -169,7 +187,6 @@ enddef
 def OnError(ch: channel, msg: string)
     echoe "ERROR: " .. msg
 enddef
-
 
 defcompile
 
