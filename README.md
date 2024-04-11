@@ -2,6 +2,8 @@
 
 Local driven AI assistent plugin written in the cutting-edge Vim9 script and powered by ollama and codellama
 
+https://github.com/greeschenko/vim9-ollama/assets/2754533/9091d416-1ef2-4651-b954-f563000b3f8d
+
 ## Requirement
 
 This plugin supports Vim version 9.0+.
