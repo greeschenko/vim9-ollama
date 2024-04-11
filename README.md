@@ -77,8 +77,8 @@ this command write after selection text a LLM comments about this
 
 You can use this experimental function some kind like copilot
 
-start write a code and pres <C-l> you can see a completion candidat press <C-l> again and you get new candidat
-when you get correct variant press <C-f> to paste code in the buffer
+start write a code and pres `<C-l>` you can see a completion candidat press `<C-l>` again and you get new candidat
+when you get correct variant press `<C-f>` to paste code in the buffer
 
 ## Troubleshooting
 
