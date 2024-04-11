@@ -1,6 +1,6 @@
 # vim9-ollama
 
-Local driven AI assistent plugin written in the cutting-edge Vim9 script and powered by ollama
+Local driven AI assistent plugin written in the cutting-edge Vim9 script and powered by ollama and codellama
 
 ## Requirement
 
@@ -10,8 +10,10 @@ You need install [ollama](https://ollama.com/) and test it with following comman
 
 ```bash
 ollama serve
+ollama pull codellama:latest
+ollama pull codellama:7b-code
 
-ollama run codellama
+ollama run codellama:latest
 ```
 
 ## Configuration
@@ -48,8 +50,8 @@ this command replace text with correct text with improved gramma and spelling
 
 this command replace you code with updated
 
-4. prepere not completite code with <FILL> in midle  
-    
+4. prepere not completite code with <FILL> in midle
+
 ```go
 func fibanachi(a, b){
     <FILL>
@@ -70,6 +72,13 @@ this command replace you code with complete function
 ```
 
 this command write after selection text a LLM comments about this
+
+## Inline Completion
+
+You can use this experimental function some kind like copilot
+
+start write a code and pres <C-l> you can see a completion candidat press <C-l> again and you get new candidat
+when you get correct variant press <C-f> to paste code in the buffer
 
 ## Troubleshooting
 
