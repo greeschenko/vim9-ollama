@@ -4,7 +4,80 @@ vim9script
 # Origin: https://github.com/greeschenko/vim9-ollama.git
 #
 
+
+### TODO prompt for change code with codelama
+###    "prompt": '\\\' ..  &filetype
+###    .. res
+###    .. '\\\'
+###    .. '[INST] You are an expert programmer and personal assistant. Your task is to rewrite the above code with these instructions:'
+###    .. prompt
+###    .. '[/INST] Sure! Here is the rewritten code you requested:'
+###    .. '\\\' ..  &filetype,
+
 g:ollama_compl_candidat = ""
+
+if !exists("g:ollama_api")
+  g:ollama_api = "http://localhost:11434/api/generate"
+endif
+
+if !exists("g:ollama_models")
+  g:ollama_models = {
+    "complete": {
+      "name": "starcoder2:3b",
+      "stream": false,
+      "options": {
+        "num_predict": 256,
+        "temperature": 0.2,
+        "stop": ["\n\n", "<EOT>", "[INST]", "[/INST]"],
+      }
+    },
+
+    "change": {
+      "name": "qwen2.5-coder:3b-instruct-q4_K_M",
+      "stream": true,
+      "options": {
+        "temperature": 0.1,
+        "num_predict": 512,
+      },
+      "prompt_template": [
+        "You are an AI assistant.",
+        "Follow the user instruction strictly.",
+        "Return only the final result.",
+        "",
+        "Filetype: {filetype}",
+        "",
+        "File context:",
+        "{filecontext}",
+        "",
+        "Instruction:",
+        "{instruction}",
+        "",
+        "Input:",
+        "{input}",
+        "",
+        "Output:",
+        "\\\\\\ {filetype}"
+      ]
+    },
+
+    "chat": {
+      "name": "qwen2.5-coder:3b-instruct-q4_K_M",
+      "stream": true,
+      "options": {
+        "temperature": 0.3,
+      }
+    }
+  }
+endif
+
+def GetModelConfig(model_key: string): dict<any>
+  if !has_key(g:ollama_models, model_key)
+    echoe "Unknown Ollama model key: " .. model_key
+    return {}
+  endif
+
+  return g:ollama_models[model_key]
+enddef
 
 def StartServer()
     const cmd = [ "ollama", "serve" ]
@@ -15,7 +88,6 @@ def StartServer()
     echom "Starting server..."
 enddef
 
-
 def StopServer()
     const cmd = [ "pkill", "-SIGTERM", "ollama" ]
     const opts = {
@@ -24,7 +96,6 @@ def StopServer()
     const job = job_start(cmd, opts)
     echom "Stoping server..."
 enddef
-
 
 def OnSrvError(ch: channel, msg: string)
     echom msg
@@ -38,220 +109,178 @@ def OnResponse(ch: channel, msg: string)
     execute "normal! A" .. json.response
 enddef
 
-def OllamaAsk(promt: string)
-  const api = "http://localhost:11434/api/generate"
-  const data = {
-    "model": "codellama:latest",
-    "prompt": promt,
-    "stream": true,
+def GetSelectedText(): string
+  const start = getpos("'<")[1 : 2]
+  const end = getpos("'>")[1 : 2]
+  const lines = getline(start[0], end[0])
+  var selected = ""
+
+  for i in range(len(lines))
+    var line = lines[i]
+
+    if i == 0
+      line = line[start[1] - 1 :]
+    endif
+
+    if i == len(lines) - 1
+      line = line[: end[1] - 1]
+    endif
+
+    selected ..= line
+    if i < len(lines) - 1
+      selected ..= "\n"
+    endif
+  endfor
+
+  return selected
+enddef
+
+def DeleteSelection()
+  const start = getpos("'<")[1 : 2]
+  const end = getpos("'>")[1 : 2]
+  execute "normal! " .. start[0] .. "gg" .. start[1] .. "|" ..
+          "v" .. end[0] .. "gg" .. end[1] .. "|" .. "d"
+enddef
+
+def GetContext(linesAround: number = 50): string
+  const cur = line(".")
+  const ctx_start = max([1, cur - linesAround])
+  const ctx_end = min([line("$"), cur + linesAround])
+  return join(getline(ctx_start, ctx_end), "\n")
+enddef
+
+def CallOllamaApi(prompt: string, model_key: string, Callback: func)
+
+  const model_cfg = GetModelConfig(model_key)
+
+  if empty(model_cfg)
+    return
+  endif
+
+  var data = {
+    "model": model_cfg.name,
+    "prompt": prompt,
+    "stream": model_cfg.stream
   }
-  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
+
+  if has_key(model_cfg, "options")
+    data.options = model_cfg.options
+  endif
+
+  const cmd = [
+    "curl",
+    "-X", "POST",
+    "-d", json_encode(data),
+    "--silent",
+    g:ollama_api
+  ]
+
   const opts = {
-    "out_cb": OnResponse,
+    "out_cb": Callback,
     "err_cb": OnError
   }
-  const job = job_start(cmd, opts)
+
+  job_start(cmd, opts)
+enddef
+
+def ShowResultBuffer()
   silent execute "vertical belowright :60split /tmp/ollamaanswer.md"
   silent execute "set wrap linebreak"
   execute "normal ggVGd"
-  echom "Searching..."
 enddef
 
-def OllamaChange(prompt: string)
-  const start = getpos("'<")[1 : 2]
-  const end = getpos("'>")[1 : 2]
-  const lines = getline(start[0], end[0])
-  var res: string
-  for line in lines
-    res = res .. line[start[1] - 1  : end[1] - 1]
-  endfor
+def BuildOllamaPrompt(model_key: string, instruction: string, selected: string, filetype: string, ctx: string): string
 
-  execute "normal! " .. start[0] .. "gg" .. start[1] .. "|" .. "v" .. end[0] .. "gg" .. end[1] .. "|" .. "d"
+  const model_cfg = GetModelConfig(model_key)
 
-  const api = "http://localhost:11434/api/generate"
-  const data = {
-    "model": "codellama:latest",
-    "prompt": prompt .. res,
-    "stream": true,
-  }
+  if !has_key(model_cfg, "prompt_template")
+    return instruction .. "\n\n" .. selected
+  endif
 
-  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
-  const opts = {
-    "out_cb": OnResponse,
-    "err_cb": OnError
-  }
-  const job = job_start(cmd, opts)
-  echom "Searching..."
+  var template = join(model_cfg.prompt_template, "\n")
+
+  template = substitute(template, "{instruction}", instruction, "g")
+  template = substitute(template, "{input}", selected, "g")
+  template = substitute(template, "{filetype}", filetype, "g")
+  template = substitute(template, "{filecontext}", ctx, "g")
+
+  return template
 enddef
 
-def OllamaChangeCode(prompt: string)
-  const start = getpos("'<")[1 : 2]
-  const end = getpos("'>")[1 : 2]
-  const lines = getline(start[0], end[0])
-  var res: string
-  for line in lines
-    res = res .. line[start[1] - 1  : end[1] - 1]
-  endfor
+def OllamaAsk(prompt: string)
+  ShowResultBuffer()
 
-  execute "normal! " .. start[0] .. "gg" .. start[1] .. "|" .. "v" .. end[0] .. "gg" .. end[1] .. "|" .. "d"
+  CallOllamaApi(prompt, "chat", OnResponse)
 
-  const api = "http://localhost:11434/api/generate"
-  const data = {
-    "model": "codellama:latest",
-    "prompt": '\\\' ..  &filetype
-    .. res
-    .. '\\\'
-    .. '[INST] You are an expert programmer and personal assistant. Your task is to rewrite the above code with these instructions:'
-    .. prompt
-    .. '[/INST] Sure! Here is the rewritten code you requested:'
-    .. '\\\' ..  &filetype,
-    "stream": true,
-    "options": {
-      "seed": 123,
-      "temperature": 0.4,
-      "num_thread": 8,
-      #"mirostat_eta": 0.5,
-    },
-  }
-
-  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
-  const opts = {
-    "out_cb": OnResponse,
-    "err_cb": OnError
-  }
-  const job = job_start(cmd, opts)
-  echom "Searching..."
+  echom "Ollama chat..."
 enddef
 
-def OllamaFill()
-  const start = getpos("'<")[1 : 2]
-  const end = getpos("'>")[1 : 2]
-  const lines = getline(start[0], end[0])
-  var res: string
-  for line in lines
-    res = '\\\' ..  &filetype .. " " .. res .. line[start[1] - 1  : end[1] - 1] .. '\\\'
-  endfor
+def OllamaChange(instruction: string)
 
-  execute "normal! " .. start[0] .. "gg" .. start[1] .. "|" .. "v" .. end[0] .. "gg" .. end[1] .. "|" .. "d"
+  var selected = GetSelectedText()
+  var ctx = GetContext(get(g:, "ollama_context_lines", 50))
 
-  const api = "http://localhost:11434/api/generate"
-  const data = {
-    "model": "codellama:latest",
-    "prompt": res,
-    "stream": true,
-    "options": {
-      "seed": 123,
-      "temperature": 0.4,
-      "num_thread": 8,
-      #"mirostat_eta": 0.5,
-    },
-  }
+  DeleteSelection()
 
-  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
-  const opts = {
-    "out_cb": OnResponse,
-    "err_cb": OnError
-  }
-  const job = job_start(cmd, opts)
-  echom "Searching..."
+  var final_prompt = BuildOllamaPrompt(
+    "change",
+    instruction,
+    selected,
+    &filetype,
+    ctx
+  )
+
+  CallOllamaApi(final_prompt, "change", OnResponse)
+
+  echom "Ollama processing..."
+
 enddef
 
 def OllamaRead(prompt: string)
-  const start = getpos("'<")[1 : 2]
-  const end = getpos("'>")[1 : 2]
-  const lines = getline(start[0], end[0])
-  var res: string
-  for line in lines
-    res = res .. line[start[1] - 1  : end[1] - 1]
-  endfor
 
-  execute "normal! " .. end[0] .. "gg" .. end[1] .. "|" .. "o"
+  var selected = GetSelectedText()
 
-  const api = "http://localhost:11434/api/generate"
-  const data = {
-    "model": "codellama:latest",
-    "prompt": prompt .. res,
-    "stream": true,
-  }
-  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
-  const opts = {
-    "out_cb": OnResponse,
-    "err_cb": OnError
-  }
-  const job = job_start(cmd, opts)
-  silent execute "vertical belowright :60split /tmp/ollamaanswer.md"
-  silent execute "set wrap linebreak"
-  execute "normal ggVGd"
-  echom "Searching..."
+  DeleteSelection()
+
+  var final_prompt = prompt .. "\n\n" .. selected
+
+  ShowResultBuffer()
+
+  CallOllamaApi(final_prompt, "chat", OnResponse)
+
+  echom "Ollama reading..."
+
 enddef
 
 #experimental function for inline code completion
-def OllamaComplete()    
-  var before_cursor = strpart(getline('.'), 0, col('.') - 1)    
-  var after_cursor = strpart(getline('.'), col('.') - 1)
-  var before_cursor_lines = ""
-  var after_cursor_lines = ""
+def OllamaComplete()
 
   prop_type_delete("ollama_compl_prop_type")
 
+  var before_cursor = strpart(getline("."), 0, col(".") - 1)
+
   g:ollama_before_cursor = before_cursor
 
-  var line_num = getcurpos()[1]
-  var prelines = 100
-  if line_num < prelines
-    prelines = line_num
-  endif
-  var linespre = getline(line_num - prelines, line_num - 1)
-  var linesafter = getline(line_num + 1, line_num + 2)
+  var line_num = line(".")
+  var ctx_lines = min([100, line_num])
 
-  for [k, v] in items(linespre)
-    before_cursor_lines ..= v
-    if len(linespre) - 1 != k
-      before_cursor_lines ..= "\n"
-    endif
-  endfor
+  var linespre = getline(line_num - ctx_lines, line_num - 1)
 
-  for [k, v] in items(linesafter)
-    after_cursor_lines ..= v
-    if len(linesafter) - 1 != k
-      after_cursor_lines ..= "\n"
-    endif
-  endfor
+  var context = join(linespre, "\n")
 
-  var res = printf(
+  var prompt = printf(
     "%s\n%s",
-    before_cursor_lines,
-    before_cursor,
+    context,
+    before_cursor
   )
 
-  const api = "http://localhost:11434/api/generate"
+  CallOllamaApi(prompt, "complete", OnResponseComplete)
 
-  const prompt = res
-
-  const data = {
-    "model": "codellama:7b-code",
-    "prompt": prompt,
-    "stream": false,
-    "options": {
-      #"seed": 123,
-      #"temperature": 0.4,
-      #"temperature": 0,
-      "num_predict": 256,
-      "stop": ["\n\n", "<EOT>", "[INST]", "[/INST]"],
-      #"num_thread": 8,
-      #"mirostat_eta": 0.5,
-    },
-  }
-
-  const cmd = [ "curl", "-X", "POST", "-d", json_encode(data), "--silent", api ]
-  const opts = {
-    "out_cb": OnResponseComplete,
-    "err_cb": OnError
-  }
-  const job = job_start(cmd, opts)
   execute "normal a "
-  :startinsert
-  echom "Searching..."
+  startinsert
+
+  echom "Ollama completion..."
+
 enddef
 
 def OnResponseComplete(ch: channel, msg: string)
@@ -274,8 +303,11 @@ def OnResponseComplete(ch: channel, msg: string)
       })
     endfor
 
-    autocmd CursorMovedI * call prop_type_delete("ollama_compl_prop_type")
-    autocmd CursorMoved * call prop_type_delete("ollama_compl_prop_type")
+    augroup ollama_complete
+      autocmd!
+      autocmd CursorMovedI * call prop_type_delete("ollama_compl_prop_type")
+      autocmd CursorMoved * call prop_type_delete("ollama_compl_prop_type")
+    augroup END
 enddef
 
 def OllamaCompleteExc()    
@@ -296,8 +328,6 @@ defcompile
 
 command! -nargs=1 OllamaAsk call OllamaAsk(<f-args>)
 command! -nargs=1 -range OllamaChange call OllamaChange(<f-args>)
-command! -nargs=1 -range OllamaChangeCode call OllamaChangeCode(<f-args>)
-command! -range OllamaFill call OllamaFill()
 command! OllamaReStart call StartServer()
 command! OllamaComplete call OllamaComplete()
 command! OllamaCompleteExc call OllamaCompleteExc()
