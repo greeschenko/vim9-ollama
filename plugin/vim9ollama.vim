@@ -136,10 +136,11 @@ def GetSelectedText(): string
 enddef
 
 def DeleteSelection()
-  const start = getpos("'<")[1 : 2]
-  const end = getpos("'>")[1 : 2]
-  execute "normal! " .. start[0] .. "gg" .. start[1] .. "|" ..
-          "v" .. end[0] .. "gg" .. end[1] .. "|" .. "d"
+  const start = getpos("'<")[1]
+  const end = getpos("'>")[1]
+  deletebufline(bufnr(), start, end)
+  cursor(max([1, line('.') - 1]), col('.'))
+  append(line('.'), "")
 enddef
 
 def GetContext(linesAround: number = 50): string
@@ -187,6 +188,7 @@ def ShowResultBuffer()
   silent execute "vertical belowright :60split /tmp/ollamaanswer.md"
   silent execute "set wrap linebreak"
   execute "normal ggVGd"
+  setlocal filetype=markdown
 enddef
 
 def BuildOllamaPrompt(model_key: string, instruction: string, selected: string, filetype: string, ctx: string): string
@@ -233,23 +235,15 @@ def OllamaChange(instruction: string)
   CallOllamaApi(final_prompt, "change", OnResponse)
 
   echom "Ollama processing..."
-
+  execute "normal! \<CR>"
 enddef
 
 def OllamaRead(prompt: string)
-
   var selected = GetSelectedText()
-
-  DeleteSelection()
-
   var final_prompt = prompt .. "\n\n" .. selected
-
   ShowResultBuffer()
-
   CallOllamaApi(final_prompt, "chat", OnResponse)
-
   echom "Ollama reading..."
-
 enddef
 
 #experimental function for inline code completion
