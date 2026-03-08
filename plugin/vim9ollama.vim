@@ -271,7 +271,7 @@ def OllamaComplete()
   CallOllamaApi(prompt, "complete", OnResponseComplete)
 
   execute "normal a "
-  startinsert
+  feedkeys("i", "n")
 
   echom "Ollama completion..."
 
