@@ -29,7 +29,19 @@ if !exists("g:ollama_models")
         "num_predict": 256,
         "temperature": 0.2,
         "stop": ["\n\n", "<EOT>", "[INST]", "[/INST]"],
-      }
+      },
+      "prompt_template": [
+        "You are an expert {filetype} code completion assistant.",
+        "Return only the code continuation without explanations.",
+        "",
+        "Code context:",
+        "{filecontext}",
+        "",
+        "Prefix (before cursor):",
+        "{input}",
+        "",
+        "Complete the code:"
+      ]
     },
 
     "change": {
@@ -40,9 +52,10 @@ if !exists("g:ollama_models")
         "num_predict": 512,
       },
       "prompt_template": [
-        "You are an AI assistant.",
-        "Follow the user instruction strictly.",
-        "Return only the final result.",
+        "You are an expert {filetype} developer.",
+        "Rewrite the code strictly according to the instruction.",
+        "Preserve formatting and style.",
+        "Return only the modified code.",
         "",
         "Filetype: {filetype}",
         "",
@@ -52,11 +65,10 @@ if !exists("g:ollama_models")
         "Instruction:",
         "{instruction}",
         "",
-        "Input:",
+        "Input code:",
         "{input}",
         "",
-        "Output:",
-        "\\\\\\ {filetype}"
+        "Modified code:"
       ]
     },
 
@@ -65,7 +77,18 @@ if !exists("g:ollama_models")
       "stream": true,
       "options": {
         "temperature": 0.3,
-      }
+      },
+      "prompt_template": [
+        "You are a helpful programming assistant.",
+        "Answer concisely and clearly.",
+        "",
+        "User question / instruction:",
+        "{instruction}",
+        "",
+        "{input}",
+        "",
+        "Provide your answer below:"
+      ]
     }
   }
 endif
@@ -209,12 +232,17 @@ def BuildOllamaPrompt(model_key: string, instruction: string, selected: string, 
   return template
 enddef
 
-def OllamaAsk(prompt: string)
+def OllamaAsk(instruction: string)
+  var ctx = GetContext(get(g:, "ollama_context_lines", 50))
+  var final_prompt = BuildOllamaPrompt(
+    "chat", instruction, "", &filetype, ctx
+  )
+
   ShowResultBuffer()
 
-  CallOllamaApi(prompt, "chat", OnResponse)
+  CallOllamaApi(final_prompt, "chat", OnResponse)
 
-  echom "Ollama chat..."
+  echom "Ollama says..."
 enddef
 
 def OllamaChange(instruction: string)
@@ -238,43 +266,42 @@ def OllamaChange(instruction: string)
   execute "normal! \<CR>"
 enddef
 
-def OllamaRead(prompt: string)
+def OllamaRead(instruction: string)
   var selected = GetSelectedText()
-  var final_prompt = prompt .. "\n\n" .. selected
+  var ctx = GetContext(get(g:, "ollama_context_lines", 50))
+  var final_prompt = BuildOllamaPrompt(
+    "chat", instruction, selected, &filetype, ""
+  )
+
   ShowResultBuffer()
+
   CallOllamaApi(final_prompt, "chat", OnResponse)
-  echom "Ollama reading..."
+
+  echom "Ollama says..."
 enddef
 
 #experimental function for inline code completion
 def OllamaComplete()
-
   prop_type_delete("ollama_compl_prop_type")
 
   var before_cursor = strpart(getline("."), 0, col(".") - 1)
-
   g:ollama_before_cursor = before_cursor
 
   var line_num = line(".")
   var ctx_lines = min([100, line_num])
-
   var linespre = getline(line_num - ctx_lines, line_num - 1)
-
   var context = join(linespre, "\n")
 
-  var prompt = printf(
-    "%s\n%s",
-    context,
-    before_cursor
+  var final_prompt = BuildOllamaPrompt(
+    "complete", "", before_cursor, &filetype, context
   )
 
-  CallOllamaApi(prompt, "complete", OnResponseComplete)
+  CallOllamaApi(final_prompt, "complete", OnResponseComplete)
 
   execute "normal a "
   feedkeys("i", "n")
 
   echom "Ollama completion..."
-
 enddef
 
 def OnResponseComplete(ch: channel, msg: string)
