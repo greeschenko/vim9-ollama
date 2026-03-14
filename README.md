@@ -1,89 +1,278 @@
 # vim9-ollama
 
-Local driven AI assistent plugin written in the cutting-edge Vim9 script and powered by ollama and codellama
+**Local AI coding assistant for Vim 9 powered by Ollama.**
 
-https://github.com/greeschenko/vim9-ollama/assets/2754533/9091d416-1ef2-4651-b954-f563000b3f8d
+`vim9-ollama` is a modern **Vim9script plugin** that integrates **local LLMs** into Vim.  
+It provides AI-powered chat, code rewriting, code review, and **inline code completion**.
 
-## Requirement
+All AI inference runs **locally** using **Ollama**, so your code never leaves your machine.
 
-This plugin supports Vim version 9.0+.
+---
 
-You need install [ollama](https://ollama.com/) and test it with following commands
+## Features
+
+- 🧠 Local AI coding assistant
+- ⚡ Written in modern **Vim9script**
+- 🔌 **Autoload architecture** for fast startup
+- 💬 Chat with LLM about your code
+- ✏️ Rewrite / refactor selected code
+- 🔍 Code review and suggestions
+- 🤖 Inline AI completion (experimental)
+- ⚙️ Fully configurable models and prompts
+
+---
+
+## Requirements
+
+- **Vim ≥ 9.0**
+- **Ollama**
+
+Install Ollama:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+````
+
+Start the Ollama server:
 
 ```bash
 ollama serve
-ollama pull codellama:latest
-ollama pull codellama:7b-code
-
-ollama run codellama:latest
 ```
 
-## Configuration
+Download recommended models:
 
-Add to your .vimrc
+```bash
+ollama pull starcoder2:3b
+ollama pull qwen2.5-coder:3b
+```
+
+---
+
+## Installation
+
+Using **vim-plug**:
 
 ```vim
 Plug 'greeschenko/vim9-ollama'
 ```
 
-## Usage
+Restart Vim.
 
-1. type in vim console
+The plugin will automatically start the Ollama server on Vim startup.
 
-```bash
-    :OllamaAsk Tell me a joke
+---
+
+## Configuration
+
+The plugin can be configured via global Vim variables.
+
+Example configuration:
+
+````vim
+let g:ollama_api = "http://localhost:11434/api/generate"
+
+let g:ollama_models = {
+\ "complete": {
+\   "name": "starcoder2:3b",
+\   "stream": v:false,
+\   "options": {
+\     "num_predict": 256,
+\     "temperature": 0.2
+\   },
+\   "prompt_template": [
+\     "```{filetype}",
+\     "{filecontext}",
+\     "{input}<|cursor|>{instruction}"
+\   ]
+\ },
+\
+\ "change": {
+\   "name": "qwen2.5-coder:3b",
+\   "stream": v:true,
+\   "options": {
+\     "temperature": 0.1,
+\     "num_predict": 512
+\   }
+\ },
+\
+\ "chat": {
+\   "name": "qwen2.5-coder:3b",
+\   "stream": v:true,
+\   "options": {
+\     "temperature": 0.3
+\   }
+\ }
+\ }
+````
+
+You can customize:
+
+* model names
+* temperature
+* token limits
+* prompt templates
+
+---
+
+## Commands
+
+### Ask the LLM
+
+Ask a question about the current file or code context.
+
+```
+:OllamaAsk Explain this function
 ```
 
-return a random joke or another ansver for your question in the cursor position line
+The response will appear in a split window.
 
-2. select text or code and type in vim console
+---
 
-```bash
-    :OllamaChange Modify the following text to improve grammar and spelling, just output the final text without additional quotes around it
+### Rewrite selected code
+
+Select code in **visual mode** and run:
+
+```
+:OllamaChange Refactor this function
 ```
 
-this command replace text with correct text with improved gramma and spelling
+Examples:
 
-3. select code and type in vim console
-
-```bash
-    :OllamaChangeCode Add extra logging in this function
+```
+:OllamaChange Improve readability
 ```
 
-this command replace you code with updated
+```
+:OllamaChange Add logging
+```
 
-4. prepere not completite code with <FILL> in midle
+```
+:OllamaChange Convert this to Go generics
+```
+
+The selected code will be replaced with the modified version.
+
+---
+
+### Review selected code
+
+Select code and run:
+
+```
+:OllamaRead What could be improved here?
+```
+
+This displays AI comments in a separate buffer.
+
+---
+
+## Inline Code Completion (Experimental)
+
+Inline completion works similarly to **GitHub Copilot**.
+
+### Trigger completion
+
+Press:
+
+```
+Ctrl + L
+```
+
+This sends the current context to the model and shows a **ghost suggestion** below the cursor.
+
+Press again to request another suggestion.
+
+---
+
+### Accept completion
+
+Press:
+
+```
+Ctrl + F
+```
+
+The suggested code will be inserted into the buffer.
+
+---
+
+## How Completion Works
+
+The plugin sends a **Fill-in-the-Middle (FIM)** prompt to the model.
+
+Example input:
 
 ```go
-func fibanachi(a, b){
-    <FILL>
-}
-```
-select whis code and type
-
-```bash
-    :OllamaFill
+fmt.Printf(<|cursor|>"hello")
 ```
 
-this command replace you code with complete function
+The model generates the missing code at the cursor position.
 
-5. select text or code and type in vim console
+---
 
-```bash
-    :OllamaRead what I can change in this
+## Architecture
+
+The plugin uses **modern Vim9 autoload architecture**.
+
+```
+vim9-ollama
+├─ plugin
+│  └─ vim9ollama.vim
+│
+└─ autoload
+   └─ vim9ollama.vim
 ```
 
-this command write after selection text a LLM comments about this
+* `plugin/` defines commands and key mappings
+* `autoload/` contains implementation
+* functions load **only when used**
 
-## Inline Completion
+This keeps Vim startup fast.
 
-You can use this experimental function some kind like copilot
-
-start write a code and pres `<C-l>` you can see a completion candidat press `<C-l>` again and you get new candidat
-when you get correct variant press `<C-f>` to paste code in the buffer
+---
 
 ## Troubleshooting
 
-If you run multiple Vim instances and Ollama does not respond, try running the command `:OllamaReStart`.
-This will restart the Ollama server and fix any connection issues."
+### Ollama does not respond
 
+Restart the server:
+
+```
+:call ollama.StartServer()
+```
+
+Or manually:
+
+```bash
+pkill ollama
+ollama serve
+```
+
+---
+
+## Roadmap
+
+Planned improvements:
+
+* streaming inline completion
+* better FIM prompts
+* async UI updates
+* multi-buffer context
+* configurable keymaps
+* model selection per filetype
+
+---
+
+## License
+
+MIT
+
+---
+
+## Author
+
+Olex Hryshchenko
+[https://github.com/greeschenko](https://github.com/greeschenko)
+
+```
+```
