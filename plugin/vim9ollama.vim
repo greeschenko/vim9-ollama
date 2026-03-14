@@ -28,22 +28,14 @@ if !exists("g:ollama_models")
       "options": {
         "num_predict": 256,
         "temperature": 0.2,
-        "stop": ["\n\n", "<EOT>", "[INST]", "[/INST]"],
+        "stop": ["\n\n", "<EOT>", "[INST]", "[/INST]", '```'],
       },
       "prompt_template": [
-        "You are an expert {filetype} code completion assistant.",
-        "Return only the code continuation without explanations.",
-        "",
-        "Code context:",
+        "```{filetype}",
         "{filecontext}",
-        "",
-        "Prefix (before cursor):",
-        "{input}",
-        "",
-        "Complete the code:"
+        "{input}<|cursor|>{instruction}",
       ]
     },
-
     "change": {
       "name": "qwen2.5-coder:3b-instruct-q4_K_M",
       "stream": true,
@@ -282,53 +274,107 @@ enddef
 
 #experimental function for inline code completion
 def OllamaComplete()
+
+  # remove previous ghost completion
   prop_type_delete("ollama_compl_prop_type")
 
-  var before_cursor = strpart(getline("."), 0, col(".") - 1)
+  # get text before cursor
+  var line_text = getline(".")
+  var before_cursor = strpart(line_text, 0, col(".") - 1)
+  var after_cursor  = strpart(line_text, col(".") - 1)
+
+  # check if line is empty
+  if empty(before_cursor)
+    echom "Ollama: nothing before cursor"
+    return
+  endif
+
+  # store prefix globally for response processing
   g:ollama_before_cursor = before_cursor
 
+  # get current line number
   var line_num = line(".")
+
+  # calculate context lines
   var ctx_lines = min([100, line_num])
+
+  # read lines before cursor
   var linespre = getline(line_num - ctx_lines, line_num - 1)
+
+  # join context
   var context = join(linespre, "\n")
 
+  # check model config exists
+  var model_cfg = GetModelConfig("complete")
+  if empty(model_cfg)
+    echoe "Ollama: complete model config not found"
+    return
+  endif
+
+  # build prompt for inline completion
   var final_prompt = BuildOllamaPrompt(
-    "complete", "", before_cursor, &filetype, context
+    "complete",
+    after_cursor,
+    before_cursor,
+    &filetype,
+    context
   )
 
+  # ensure prompt was built
+  if empty(final_prompt)
+    echoe "Ollama: prompt generation failed"
+    return
+  endif
+
+  # debug message
+  echom "Ollama: sending completion request"
+
+  # call ollama API
   CallOllamaApi(final_prompt, "complete", OnResponseComplete)
 
+  # enter insert mode without triggering mappings
   execute "normal a "
   feedkeys("i", "n")
 
   echom "Ollama completion..."
+
 enddef
 
 def OnResponseComplete(ch: channel, msg: string)
-    const json = json_decode(msg)
-    const curlnum = getcurpos()[1]
-    const curcol = getcurpos()[2]
-    const res = substitute(json.response, g:ollama_before_cursor, '', 'g')
-    const lines = split(res, "\n")
+  echom "Ollama: got raw response -> " .. msg  # DEBUG: see raw API output
 
-    prop_type_add("ollama_compl_prop_type", {highlight: 'Comment'})
+  const json = json_decode(msg)
+  if !has_key(json, "response")
+    echom "Ollama: response field missing"
+    return
+  endif
 
-    g:ollama_compl_candidat = res
+  const curlnum = getcurpos()[1]
+  const curcol = getcurpos()[2]
 
-    for line in lines
-      prop_add(curlnum, 0, {
-          text: line,
-          type: "ollama_compl_prop_type",
-          text_align: 'below',
-          text_padding_left: curcol,
-      })
-    endfor
+  const res = substitute(json.response, g:ollama_before_cursor, '', 'g')
+  echom "Ollama: processed completion -> " .. res  # DEBUG
 
-    augroup ollama_complete
-      autocmd!
-      autocmd CursorMovedI * call prop_type_delete("ollama_compl_prop_type")
-      autocmd CursorMoved * call prop_type_delete("ollama_compl_prop_type")
-    augroup END
+  const lines = split(res, "\n")
+
+  prop_type_add("ollama_compl_prop_type", {highlight: 'Comment'})
+
+  g:ollama_compl_candidat = res
+
+  for line in lines
+    prop_add(curlnum, 0, {
+        text: line,
+        type: "ollama_compl_prop_type",
+        text_align: 'below',
+        text_padding_left: curcol,
+    })
+  endfor
+
+  augroup ollama_complete
+    autocmd!
+    autocmd CursorMovedI * call prop_type_delete("ollama_compl_prop_type")
+    autocmd CursorMoved * call prop_type_delete("ollama_compl_prop_type")
+  augroup END
 enddef
 
 def OllamaCompleteExc()    
